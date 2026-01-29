@@ -1,81 +1,76 @@
-SpunteBlu-APP
+# SpunteBlu APP
 
-SpunteBlu-APP è un'applicazione Android non ufficiale progettata per consultare tutti i post e le storie di SpunteBlu.it in modo fluido, veloce e, soprattutto, completamente gratuito e senza pubblicità (ADS).
-🚀 Caratteristiche
+Questa è un'applicazione non ufficiale per visualizzare i post del sito [Spunteblu.it](https://www.spunteblu.it) in modo gratuito, senza pubblicità e con un'interfaccia nativa per Android.
 
-    Visualizzazione pulita dei contenuti.
+## Come Funziona
 
-    Navigazione ottimizzata per dispositivi mobili.
+L'app permette di aprire direttamente i link dei post di `spunteblu.it`. Per un'esperienza ottimale, è necessario abilitare l'apertura dei link supportati direttamente nell'app.
 
-    Zero interruzioni pubblicitarie.
+### Abilitare l'apertura dei link
 
-    Integrazione nativa con i link del sito.
+1.  Vai su **Impostazioni** del tuo dispositivo Android.
+2.  Cerca **App > Gestione app > Spunteblu**.
+3.  Trova la voce **Apri per impostazione predefinita** (o "Link da aprire in questa app").
+4.  Attiva l'opzione e assicurati di aver selezionato i seguenti domini:
+    *   `spunteblu.it`
+    *   `www.spunteblu.it`
 
-📲 Installazione (Download APK)
+In questo modo, ogni volta che cliccherai su un link di un post di Spunteblu, si aprirà direttamente nell'app anziché nel browser.
 
-Se vuoi semplicemente utilizzare l'app sul tuo smartphone:
+## Come Compilare
 
-    Vai alla sezione Releases di questo repository.
+Puoi compilare l'applicazione in due modi: tramite Android Studio o utilizzando Gradle.
 
-    Scarica l'ultimo file .apk disponibile.
+### 1. Android Studio (Metodo Consigliato)
 
-    Installa il file sul tuo dispositivo (assicurati di aver abilitato l'installazione da "Origini sconosciute").
+Questo è il metodo più semplice per compilare l'app, specialmente se vuoi creare una tua chiave di firma.
 
-🛠️ Compilazione e Build (Per Sviluppatori)
+#### a. Creare una Chiave di Firma
 
-Se desideri compilare l'app autonomamente partendo dal codice sorgente, segui questi passaggi:
-Requisiti
+Se non hai già una chiave di firma (`.jks`), puoi crearne una nuova seguendo questi passaggi:
 
-    Android Studio (versione Hedgehog o superiore consigliata)
+1.  Apri il progetto in Android Studio.
+2.  Vai su **Build > Generate Signed Bundle / APK...**.
+3.  Seleziona **APK** e clicca su **Next**.
+4.  Sotto il campo **Key store path**, clicca su **Create new...**.
+5.  Compila i campi richiesti per creare la tua chiave. Salva il file `.jks` in una cartella sicura.
+6.  Una volta creata la chiave, puoi chiudere la finestra di dialogo "Generate Signed Bundle".
 
-    JDK 17 o superiore
+#### b. Configurare il Progetto
 
-Opzione 1: Usando l'interfaccia di Android Studio
+1.  **Crea un file `local.properties`** nella directory `app` del progetto (se non esiste già).
+2.  Aggiungi le seguenti righe al tuo file `local.properties`, sostituendo i valori con le tue informazioni:
 
-    Clona il repository: git clone https://github.com/Ak1r4Yuk1/SpunteBlu-APP.git
+    ```properties
+    KEY_PATH=/percorso/assoluto/al/tuo/keystore.jks
+    KEY_PASSWORD=la_tua_password
+    KEY_ALIAS=il_tuo_alias
+    ```
 
-    Apri il progetto in Android Studio.
+3.  **Compila l'APK**:
+    *   Vai su **Build > Build Bundle(s) / APK(s) > Build APK(s)**.
+    *   L'APK firmato si troverà in `app/build/outputs/apk/release/`.
 
-    Vai su Build > Generate Signed Bundle / APK....
+### 2. Gradle
 
-    Seleziona APK e clicca su Next.
+Se hai già configurato il file `local.properties` come descritto sopra, puoi compilare l'app direttamente da terminale.
 
-    Creazione Key (Keystore):
+1.  Apri un terminale nella directory principale del progetto.
+2.  Esegui il seguente comando:
 
-        Se non hai una chiave, clicca su Create new....
+    *   Su Linux/macOS:
+        ```shell
+        ./gradlew assembleRelease
+        ```
+    *   Su Windows:
+        ```shell
+        gradlew.bat assembleRelease
+        ```
 
-        Scegli un percorso per il file .jks, inserisci una password e compila i dati richiesti (Alias, Validity, etc.).
+3.  L'APK firmato si troverà in `app/build/outputs/apk/release/`.
 
-    Seleziona la variante release e clicca su Finish. L'APK verrà generato nella cartella app/release/.
+## Download
 
-Opzione 2: Usando il Terminale (Gradle)
+Se preferisci non compilare l'app, puoi scaricare l'ultima versione direttamente dalla pagina delle **Releases** su GitHub.
 
-Per generare rapidamente un APK di release senza configurare manualmente il Keystore tramite interfaccia:
-Bash
-
-    ./gradlew assembleRelease
- 
-Nota: Assicurati di aver configurato correttamente il file signingConfigs nel tuo build.gradle se desideri un APK firmato per la distribuzione.
-⚙️ Configurazione Fondamentale (Deep Linking)
-
-Per un'esperienza ottimale, è necessario che i link del sito web si aprano automaticamente all'interno dell'app. Segui questi passaggi dopo l'installazione:
-
-    Vai nelle Impostazioni del tuo smartphone.
-
-    Seleziona App > SpunteBlu-APP.
-
-    Cerca la voce "Apri per impostazione predefinita" o "Link supportati".
-
-    Attiva l'opzione "Apri i link supportati" (o "Link da aprire in questa app").
-
-    Assicurati di selezionare/spuntare tutti i domini elencati:
-
-        spunteblu.it
-
-        www.spunteblu.it
-
-In questo modo, ogni volta che cliccherai su un link di SpunteBlu (da browser, WhatsApp o social), il post verrà visualizzato direttamente nell'app senza pubblicità.
-
-📝 Note
-
-Questo progetto è sviluppato a scopo informativo e personale per migliorare la leggibilità dei contenuti del sito originale. Tutti i diritti sui contenuti appartengono ai rispettivi proprietari di SpunteBlu.it.
+*   **[Scarica l'ultima release](https://github.com/Ak1r4Yuk1/SpunteBlu-APP/releases)**
