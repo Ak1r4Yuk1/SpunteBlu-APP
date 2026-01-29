@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ricostruttore Post Dinamico Spunteblu</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        /* --- STILI DARK MODE (Sovrascrittura) --- */
+
+        /* Sfondo principale dell'APP: Nero scuro */
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #121212 !important;
+            color: #e0e0e0 !important;
+        }
+
+        /* Modifica le Card (che nel tuo codice sono .bg-white) in Grigio Scuro */
+        .bg-white {
+            background-color: #1e1e1e !important;
+            color: #e0e0e0 !important;
+            border: 1px solid #333 !important; /* Bordo sottile per definire la card */
+        }
+
+        /* Modifica i testi scuri (gray-900, 800, 700) in testi chiari */
+        .text-gray-900, .text-gray-800, .text-gray-700 {
+            color: #d1d5db !important;
+        }
+
+        /* Modifica i testi blu per renderli più luminosi e leggibili su nero */
+        .text-blue-600, .text-blue-800 {
+            color: #60a5fa !important;
+        }
+
+        /* Modifica il box dell'introduzione (bg-blue-50) */
+        .bg-blue-50 {
+            background-color: #1f2937 !important; /* Grigio bluastro scuro */
+            border-color: #374151 !important;
+        }
+        .border-blue-200 {
+             border-color: #374151 !important;
+        }
+
+        /* Gestione bordi e separatori */
+        .post-part {
+            border-top: 1px solid #333 !important; /* Separatore scuro */
+            padding-top: 1.5rem;
+            margin-top: 1.5rem;
+        }
+
+        /* Le immagini una sotto l'altra */
+        .image-container {
+            text-align: center;
+            margin-top: 15px;
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+        .image-container img {
+            max-width: 100%;
+            height: auto;
+            display: block;
+            margin: 0 auto;
+            border-radius: 6px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.5); /* Ombra più scura */
+        }
+
+        /* Stili per lo spinner di caricamento (adattato al dark) */
+        .spinner {
+            border: 4px solid rgba(255, 255, 255, 0.1); /* Bordo chiaro trasparente */
+            border-left-color: #60a5fa;
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+        /* Stili per la card del post nella lista */
+        .post-card {
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s, background-color 0.2s;
+        }
+        .post-card:hover {
+            transform: translateY(-3px);
+            background-color: #2d2d2d !important; /* Leggermente più chiaro all'hover */
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.5);
+        }
+
+        /* Nasconde le scrollbar brutte su mobile ma permette lo scroll */
+        ::-webkit-scrollbar {
+            width: 8px;
+            background: #121212;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #333;
+            border-radius: 4px;
+        }
+    </style>
+    <script>
+        const API_BASE_URL = 'https://spunteblu.it/wp-json/wp/v2';
+
+        // --- UTILS PER CHIAMATE API ROBUSTE (Exponential Backoff) ---
+        async function fetchWithRetry(url, options = {}, retries = 3) {
+            for (let i = 0; i < retries; i++) {
+                try {
+                    const response = await fetch(url, options);
+                    if (!response.ok) {
+                        // Se la risposta è 404 o 500 ecc., lancia un errore
+                        throw new Error(`HTTP error! Status: ${response.status}`);
+                    }
+                    return await response.json();
+                } catch (error) {
+                    console.error(`Fetch attempt ${i + 1} failed for ${url}:`, error);
+                    if (i < retries - 1) {
+                        // Calcola il ritardo (esponenziale: 1s, 2s, 4s)
+                        const delay = Math.pow(2, i) * 1000;
+                        await new Promise(resolve => setTimeout(resolve, delay));
+                    } else {
+                        // Ultimo tentativo fallito, lancia l'errore finale
+                        throw new Error("Failed to fetch data after multiple retries.");
+                    }
+                }
+            }
+        }
+
+        // --- NUOVA FUNZIONE: CERCA L'ID DEL POST TRAMITE SLUG ---
+        async function getPostIdBySlug(slug) {
+            const url = `${API_BASE_URL}/posts?slug=${slug}`;
+            const posts = await fetchWithRetry(url);
+
+            if (posts && posts.length > 0) {
+                return posts[0].id;
+            }
+            throw new Error(`Post with slug "${slug}" not found.`);
+        }
+
+        // --- LOGICA DI PARSING DEL CONTENUTO ---
+        function extractPostStructure(rawContent) {
+            const tempDiv = document.createElement('div');
+            // Decodifica le entity HTML come &#8220; in " e ripulisce
+            tempDiv.innerHTML = rawContent.replace(/&#(\d+);/g, (match, dec) => String.fromCharCode(dec));
+
+            // Rimuove gli elementi di navigazione e promozionali per una pulizia preliminare
+            Array.from(tempDiv.querySelectorAll('[style*="text-align: center"]')).forEach(el => {
+                if (el.textContent.includes('CONTINUA A LEGGERE') || el.textContent.includes('Leggi le ultime storie')) {
+                    el.remove();
+                }
+            });
+
+            // Splitta il contenuto per i marcatori di paginazione di Spunteblu
+            const pages = tempDiv.innerHTML.split('<!--nextpage-->');
+
+            const structuredData = {
+                introText: "",
+                parts: [],
+            };
+
+            // 1. Processa la Prima Pagina per estrarre l'introduzione e le prime immagini
+            const page1Content = pages[0];
+            const page1Div = document.createElement('div');
+            page1Div.innerHTML = page1Content;
+
+            let introTextArray = [];
+            let isIntroFinished = false;
+
+            // Tentativo di estrarre il testo introduttivo fino al primo blocco di immagini o al marcatore di chiusura (se presente)
+            Array.from(page1Div.children).forEach(element => {
+                const text = element.textContent.trim();
+
+                if (element.tagName === 'P' && !isIntroFinished && text.length > 5) {
+                    introTextArray.push(text);
+                    // Cerchiamo un marcatore comune o la fine del primo paragrafo lungo
+                    if (text.includes('commentate con le vostre esperienze') || text.includes('non è affatto così!')) {
+                         isIntroFinished = true;
+                    }
+                }
+            });
+
+            // Unisce il testo introduttivo
+            structuredData.introText = introTextArray.join('\n\n');
+
+            // Funzione per estrarre URL di immagini da una parte specifica
+            const extractImages = (html) => {
+                const partDiv = document.createElement('div');
+                partDiv.innerHTML = html;
+                return Array.from(partDiv.querySelectorAll('img'))
+                            .map(img => img.src)
+                            .filter(src => src && !src.includes('wp-content/uploads/2020/04/23-8-')); // Filtra l'immagine promozionale finale
+            };
+
+            // Aggiunge la prima parte (anche se solo testo)
+            structuredData.parts.push({
+                partNumber: 1,
+                imageUrls: extractImages(page1Content),
+            });
+
+            // Aggiunge le parti successive (dalla pagina 2 in poi)
+            pages.slice(1).forEach((partContent, index) => {
+                const imageUrls = extractImages(partContent);
+                // Aggiungiamo solo se ci sono immagini significative
+                if (imageUrls.length > 0) {
+                    structuredData.parts.push({
+                        partNumber: index + 2,
+                        imageUrls: imageUrls
+                    });
+                }
+            });
+
+            return structuredData;
+        }
+
+        // --- VISTA DETTAGLIO: RICERCA E RENDERIZZAZIONE DEL SINGOLO POST ---
+        async function renderPost(postId, slug = null) {
+            const outputDiv = document.getElementById('postOutput');
+            const titleElement = document.getElementById('postTitle');
+            const statusDiv = document.getElementById('status');
+            const detailView = document.getElementById('detailView');
+            const listView = document.getElementById('listView');
+
+            detailView.classList.remove('hidden');
+            listView.classList.add('hidden');
+
+            outputDiv.innerHTML = '';
+            titleElement.textContent = 'Caricamento Post...';
+            statusDiv.innerHTML = `<div class="spinner"></div> Caricamento contenuto del Post #${postId || slug}...`;
+
+            try {
+                // 1. Chiamata API per il post specifico
+                const postData = await fetchWithRetry(`${API_BASE_URL}/posts/${postId}`);
+
+                const rawContent = postData.content.rendered;
+
+                // 2. Estrazione e Strutturazione
+                statusDiv.innerHTML = '<div class="spinner"></div> Ricostruzione del contenuto...';
+                const structuredContent = extractPostStructure(rawContent);
+
+                // 3. Renderizzazione
+                titleElement.textContent = postData.title.rendered;
+                statusDiv.innerHTML = `<p class="text-green-500 font-semibold">Ricostruzione completata per: ${postData.title.rendered}</p>`;
+
+                // Imposta l'hash del browser per la navigazione (se non è già impostato)
+                if (postData.slug) {
+                    window.location.hash = `post/${postData.slug}`;
+                }
+
+                // Introduzione
+                let htmlContent = `
+                    <div class="intro-text text-gray-700 text-lg mb-8 p-4 bg-blue-50 shadow-inner rounded-xl border border-blue-200">
+                        <h2 class="text-xl font-bold mb-3 text-blue-800">Introduzione del Lettore:</h2>
+                        <p class="whitespace-pre-wrap">${structuredContent.introText || "Testo introduttivo non trovato."}</p>
+                    </div>
+                `;
+
+                // Parti della Conversazione (Immagini)
+                structuredContent.parts.forEach(part => {
+                    if (part.imageUrls.length === 0) return; // Salta parti senza immagini
+
+                    const imagesHtml = part.imageUrls.map(url =>
+                        `<img src="${url}" onerror="this.onerror=null; this.src='https://placehold.co/300x180/E0E0E0/333?text=Immagine+Non+Trovata'" alt="Screenshot chat parte ${part.partNumber}" loading="lazy" class="rounded-lg hover:scale-[1.01] transition-transform duration-200" />`
+                    ).join('');
+
+                    htmlContent += `
+                        <div class="post-part bg-white shadow-xl rounded-xl p-6 mb-6">
+                            <div class="part-header text-2xl font-semibold mb-4 text-gray-800">Parte ${part.partNumber} della Conversazione</div>
+                            <div class="image-container">${imagesHtml}
+                            </div>
+                        </div>
+                    `;
+                });
+
+                outputDiv.innerHTML = htmlContent;
+                window.scrollTo(0, 0); // Torna in cima
+            } catch (error) {
+                titleElement.textContent = 'Errore di Caricamento';
+                statusDiv.innerHTML = `<p class="text-red-500 font-semibold">Impossibile caricare il post: ${error.message}</p>`;
+                outputDiv.innerHTML = `<button onclick="showPostList()" class="mt-4 bg-red-600 hover:bg-red-700 text-white font-semibold py-2 px-4 rounded-lg">Torna alla Lista</button>`;
+            }
+        }
+
+        // --- VISTA LISTA: RECUPERA E RENDERIZZA GLI ULTIMI POST ---
+        async function fetchPostList() {
+            const listContainer = document.getElementById('postListContainer');
+            const statusDiv = document.getElementById('listStatus');
+
+            listContainer.innerHTML = '';
+            statusDiv.innerHTML = '<div class="flex items-center space-x-2"><div class="spinner"></div><p>Caricamento lista post recenti...</p></div>';
+
+            try {
+                // Recupera gli ultimi 15 post, includendo i dati delle immagini in evidenza
+                const posts = await fetchWithRetry(`${API_BASE_URL}/posts?per_page=15&_embed`);
+
+                if (posts.length === 0) {
+                    statusDiv.innerHTML = `<p class="text-gray-500 font-semibold">Nessun post trovato.</p>`;
+                    return;
+                }
+
+                statusDiv.innerHTML = '';
+
+                posts.forEach(post => {
+                    const title = post.title.rendered;
+                    const postId = post.id;
+                    const slug = post.slug;
+                    let imageUrl = 'https://placehold.co/150x150/5B6CB7/ffffff?text=No+Img';
+
+                    // Estrae l'immagine in evidenza
+                    if (post._embedded && post._embedded['wp:featuredmedia'] && post._embedded['wp:featuredmedia'][0]) {
+                        // Cerca l'URL del thumbnail, altrimenti usa la full
+                        const media = post._embedded['wp:featuredmedia'][0];
+                        imageUrl = media.media_details.sizes.medium_large ? media.media_details.sizes.medium_large.source_url : media.source_url;
+                    }
+
+                    // Usa il slug per il link interno
+                    const card = `
+                        <div onclick="renderPost(${postId})" class="post-card bg-white p-4 rounded-xl shadow-lg flex items-center space-x-4 border border-gray-100">
+                            <img src="${imageUrl}"
+                                 onerror="this.onerror=null; this.src='https://placehold.co/80x80/5B6CB7/ffffff?text=No+Img'"
+                                 alt="Immagine di copertina"
+                                 class="w-20 h-20 object-cover rounded-lg flex-shrink-0"
+                            />
+                            <div class="flex-grow">
+                                <h3 class="text-lg font-semibold text-gray-800">${title}</h3>
+                                <p class="text-sm text-blue-600">Clicca per ricostruire</p>
+                            </div>
+                        </div>
+                    `;
+                    listContainer.innerHTML += card;
+                });
+
+            } catch (error) {
+
+            }
+        }
+
+        // --- FUNZIONI DI CAMBIO VISTA E INIZIALIZZAZIONE ---
+
+        function showPostList() {
+            document.getElementById('detailView').classList.add('hidden');
+            document.getElementById('listView').classList.remove('hidden');
+            document.getElementById('postTitle').textContent = 'Ultimi Post Pubblicati';
+            window.location.hash = ''; // Pulisce l'hash quando si torna alla lista
+            fetchPostList();
+        }
+
+        async function handleUrlNavigation() {
+            const hash = window.location.hash;
+            // Controlla se l'hash è nel formato #post/<slug>
+            if (hash.startsWith('#post/')) {
+                const slug = hash.substring(6); // Rimuove #post/
+                if (slug) {
+                    try {
+                        const postId = await getPostIdBySlug(slug);
+                        // Se l'ID è trovato, renderizza il post
+                        renderPost(postId, slug);
+                    } catch (error) {
+                        // Se il post non è trovato o c'è un errore, torna alla lista
+                        console.error("Errore navigazione URL:", error.message);
+                        showPostList();
+                    }
+                    return;
+                }
+            }
+            // Altrimenti, mostra la lista normale
+            showPostList();
+        }
+
+        // Gestore del caricamento pagina
+        window.onload = function() {
+            handleUrlNavigation();
+        }
+
+        // Aggiunge un listener per l'evento hashchange, utile per la navigazione con il tasto back
+        window.addEventListener('hashchange', function() {
+            if (window.location.hash.startsWith('#post/')) {
+                 handleUrlNavigation();
+            } else if (window.location.hash === '') {
+                 // Previene il doppio caricamento se si usa il tasto "Torna alla lista"
+                 if (!document.getElementById('listView').classList.contains('hidden')) return;
+                 showPostList();
+            }
+        });
+    </script>
+</head>
+<body class="p-4 sm:p-8">
+
+<div class="max-w-4xl mx-auto">
+
+    <!-- VISTA LISTA --><div id="listView" class="bg-white p-6 sm:p-10 rounded-2xl shadow-2xl border border-blue-100">
+    <h2 id="postListTitle" class="text-2xl font-bold mb-6 text-gray-900">Ultimi Post Pubblicati</h2>
+    <div id="listStatus" class="mb-4"></div>
+    <div id="postListContainer" class="grid gap-4 sm:grid-cols-2 md:grid-cols-2">
+        <!-- Le card dei post verranno inserite qui --></div>
+</div>
+
+    <!-- VISTA DETTAGLIO --><div id="detailView" class="hidden">
+    <button onclick="showPostList()" class="mb-6 flex items-center text-blue-600 hover:text-blue-800 font-semibold">
+        <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg>
+        Torna alla Lista
+    </button>
+
+    <div class="bg-white p-6 sm:p-10 rounded-2xl shadow-2xl border border-blue-100">
+        <h1 id="postTitle" class="text-4xl font-bold mb-6 text-gray-900"></h1>
+        <div id="status" class="flex items-center space-x-2 mb-6"></div>
+        <div id="postOutput">
+            <!-- Il contenuto ricostruito apparirà qui --></div>
+    </div>
+</div>
+</div>
+
+</body>
+</html>
